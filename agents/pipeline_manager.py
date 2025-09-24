@@ -5,6 +5,7 @@ from typing import List
 from pydantic import BaseModel, Field
 import requests
 import os
+from .utils import validate_companies_input
 
 class LeadScoringInput(BaseModel):
     companies: List[dict] = Field(description="List of companies to score")
@@ -15,19 +16,11 @@ class LeadScoringTool(BaseTool):
     args_schema: type[BaseModel] = LeadScoringInput
     
     def _run(self, companies) -> list:
-        # Ensure companies is a list
-        if not isinstance(companies, list):
-            print(f"Warning: Expected list of companies, got {type(companies)}")
-            return []
-        
+        companies = validate_companies_input(companies)
         if not companies:
-            print("No companies provided for lead scoring")
             return []
         
         for company in companies:
-            if not isinstance(company, dict):
-                print(f"Warning: Expected company dict, got {type(company)}")
-                continue
                 
             score_breakdown = self._calculate_lead_score(company)
             company['lead_score'] = score_breakdown['total_score']
@@ -79,11 +72,7 @@ class CRMIntegrationTool(BaseTool):
     args_schema: type[BaseModel] = CRMIntegrationInput
     
     def _run(self, companies, min_grade='B') -> dict:
-        # Ensure companies is a list
-        if not isinstance(companies, list):
-            print(f"Warning: Expected list of companies, got {type(companies)}")
-            return {"error": "Invalid input: expected list of companies", "success": 0, "errors": 0}
-        
+        companies = validate_companies_input(companies)
         if not companies:
             return {"message": "No companies provided for CRM export", "success": 0, "errors": 0}
         

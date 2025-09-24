@@ -2,6 +2,7 @@ from crewai import Agent, Task
 from crewai.tools import BaseTool
 from typing import Any
 from pydantic import BaseModel, Field
+from .utils import validate_companies_input, safe_mcp_call, deduplicate_by_key, extract_domain_from_url
 
 class CompanyDiscoveryInput(BaseModel):
     industry: str = Field(description="Target industry for company discovery")
@@ -35,7 +36,7 @@ class CompanyDiscoveryTool(BaseTool):
                 if self._matches_icp(enriched, industry, size_range):
                     companies.append(enriched)
         
-        return self._deduplicate_companies(companies)
+        return deduplicate_by_key(companies, lambda c: c.get('domain') or c['name'].lower())
     
     def _search_companies(self, term):
         """Search for companies using real web search through Bright Data."""
@@ -72,8 +73,8 @@ class CompanyDiscoveryTool(BaseTool):
             return []
     
     def _enrich_company_data(self, company):
-        linkedin_data = self.mcp.scrape_company_linkedin(company['name'])
-        website_data = self.mcp.scrape_company_website(company.get('domain', ''))
+        linkedin_data = safe_mcp_call(self.mcp, 'scrape_company_linkedin', company['name'])
+        website_data = safe_mcp_call(self.mcp, 'scrape_company_website', company.get('domain', ''))
         
         # Extract employee count from LinkedIn data if available
         employee_count = linkedin_data.get('employee_count') or 150
@@ -107,127 +108,17 @@ class CompanyDiscoveryTool(BaseTool):
         min_size, max_size = ranges.get(size_range, (0, 999999))
         return min_size <= count <= max_size
     
-    def _deduplicate_companies(self, companies):
-        seen = set()
-        unique = []
-        for company in companies:
-            key = company.get('domain') or company['name'].lower()
-            if key not in seen:
-                seen.add(key)
-                unique.append(company)
-        return unique
     
     def _perform_company_search(self, query):
         """Perform company search using Bright Data MCP."""
-        try:
-            # Use MCP to search for companies
-            search_result = self.mcp.search_company_news(query)
-            
-            if search_result and search_result.get('results'):
-                return self._extract_companies_from_mcp_results(search_result['results'], query)
-            else:
-                print(f"No MCP results for: {query}")
-                return []
-                
-        except Exception as e:
-            print(f"Error performing company search via MCP: {str(e)}")
+        search_result = safe_mcp_call(self.mcp, 'search_company_news', query)
+        
+        if search_result and search_result.get('results'):
+            return self._extract_companies_from_mcp_results(search_result['results'], query)
+        else:
+            print(f"No MCP results for: {query}")
             return []
     
-    def _extract_companies_from_search(self, html_content, original_query):
-        """Extract company information from search results."""
-        from bs4 import BeautifulSoup
-        import re
-        
-        try:
-            soup = BeautifulSoup(html_content, 'html.parser')
-            companies = []
-            
-            # Look for search result snippets that contain company information
-            search_results = soup.find_all(['div', 'span'], class_=re.compile(r'.*result.*|.*snippet.*', re.I))
-            
-            for result in search_results[:10]:  # Limit to first 10 results
-                try:
-                    text = result.get_text().strip()
-                    
-                    # Look for company patterns in the text
-                    company_patterns = [
-                        r'([A-Z][a-zA-Z\s&]+(?:Inc|Corp|LLC|Ltd|Solutions|Systems|Technologies|Software|Platform))',
-                        r'([A-Z][a-zA-Z]+(?:Tech|Data|Cloud|Smart|Next|Pro|Max|Plus|Soft))',
-                        r'([A-Z][a-zA-Z\s]+(?:is a|provides|offers|specializes))'
-                    ]
-                    
-                    for pattern in company_patterns:
-                        matches = re.findall(pattern, text)
-                        for match in matches:
-                            company_name = match.strip()
-                            
-                            # Basic filtering
-                            if (len(company_name) > 3 and 
-                                len(company_name) < 50 and
-                                not any(word in company_name.lower() for word in ['google', 'facebook', 'microsoft', 'amazon', 'apple'])):
-                                
-                                # Try to extract domain
-                                domain = self._guess_domain(company_name)
-                                
-                                # Determine industry from query
-                                industry = self._extract_industry_from_query(original_query)
-                                
-                                companies.append({
-                                    'name': company_name,
-                                    'domain': domain,
-                                    'industry': industry
-                                })
-                                
-                                if len(companies) >= 5:  # Limit per search
-                                    break
-                        
-                        if len(companies) >= 5:
-                            break
-                            
-                except Exception as e:
-                    continue  # Skip problematic results
-            
-            return companies
-            
-        except Exception as e:
-            print(f"Error extracting companies from search: {str(e)}")
-            return []
-    
-    def _guess_domain(self, company_name):
-        """Generate likely domain name from company name."""
-        import re
-        
-        # Clean company name
-        clean_name = re.sub(r'(Inc|Corp|LLC|Ltd|Solutions|Systems|Technologies|Software|Platform)', '', company_name, flags=re.IGNORECASE)
-        clean_name = re.sub(r'[^a-zA-Z\s]', '', clean_name).strip()
-        
-        # Convert to domain format
-        domain_parts = clean_name.lower().split()[:2]  # Take first 2 words max
-        if domain_parts:
-            domain = ''.join(domain_parts) + '.com'
-            return domain
-        
-        return ""
-    
-    def _extract_industry_from_query(self, query):
-        """Extract industry from search query."""
-        query_lower = query.lower()
-        
-        industry_mappings = {
-            'saas': 'SaaS',
-            'fintech': 'FinTech', 
-            'ecommerce': 'E-commerce',
-            'healthcare': 'Healthcare',
-            'ai': 'AI/ML',
-            'machine learning': 'AI/ML',
-            'artificial intelligence': 'AI/ML'
-        }
-        
-        for keyword, industry in industry_mappings.items():
-            if keyword in query_lower:
-                return industry
-        
-        return 'Technology'  # Default industry
     
     def _filter_unique_companies(self, companies):
         """Filter out duplicate companies."""
@@ -299,18 +190,27 @@ class CompanyDiscoveryTool(BaseTool):
     
     def _extract_domain_from_url(self, url):
         """Extract domain from URL."""
-        if not url:
-            return ""
+        return extract_domain_from_url(url)
+    
+    def _extract_industry_from_query(self, query):
+        """Extract industry from search query."""
+        query_lower = query.lower()
         
-        try:
-            from urllib.parse import urlparse
-            parsed = urlparse(url)
-            return parsed.netloc
-        except:
-            # Fallback parsing
-            if '//' in url:
-                return url.split('//')[1].split('/')[0]
-            return ""
+        industry_mappings = {
+            'saas': 'SaaS',
+            'fintech': 'FinTech', 
+            'ecommerce': 'E-commerce',
+            'healthcare': 'Healthcare',
+            'ai': 'AI/ML',
+            'machine learning': 'AI/ML',
+            'artificial intelligence': 'AI/ML'
+        }
+        
+        for keyword, industry in industry_mappings.items():
+            if keyword in query_lower:
+                return industry
+        
+        return 'Technology'  # Default industry
 
 def create_company_discovery_agent(mcp_client):
     return Agent(

@@ -3,6 +3,7 @@ from crewai.tools import BaseTool
 from datetime import datetime, timedelta
 from typing import Any, List
 from pydantic import BaseModel, Field
+from .utils import validate_companies_input, safe_mcp_call
 
 class TriggerDetectionInput(BaseModel):
     companies: List[dict] = Field(description="List of companies to analyze for trigger events")
@@ -18,20 +19,11 @@ class TriggerDetectionTool(BaseTool):
         self.mcp = mcp_client
     
     def _run(self, companies) -> list:
-        # Handle case where companies might be wrapped in a dict
-        if isinstance(companies, dict) and 'companies' in companies:
-            companies = companies['companies']
-        
-        # Ensure companies is a list
-        if not isinstance(companies, list):
-            return []
-        
+        companies = validate_companies_input(companies)
         if not companies:
             return []
         
         for company in companies:
-            if not isinstance(company, dict):
-                continue
                 
             triggers = []
             
@@ -58,122 +50,86 @@ class TriggerDetectionTool(BaseTool):
     
     def _detect_hiring_triggers(self, company):
         """Detect hiring triggers using LinkedIn data."""
-        try:
-            linkedin_data = self.mcp.scrape_company_linkedin(company['name'])
+        linkedin_data = safe_mcp_call(self.mcp, 'scrape_company_linkedin', company['name'])
+        triggers = []
+        
+        if linkedin_data:
+            hiring_posts = linkedin_data.get('hiring_posts', [])
+            recent_activity = linkedin_data.get('recent_activity', [])
             
-            triggers = []
+            if hiring_posts:
+                triggers.append({
+                    'type': 'hiring_spike',
+                    'severity': 'high',
+                    'description': f"Active hiring detected at {company['name']} - {len(hiring_posts)} open positions",
+                    'date_detected': datetime.now().isoformat(),
+                    'source': 'linkedin_api'
+                })
             
-            # Check for hiring activity in LinkedIn data
-            if linkedin_data and not linkedin_data.get('error'):
-                hiring_posts = linkedin_data.get('hiring_posts', [])
-                recent_activity = linkedin_data.get('recent_activity', [])
-                
-                if hiring_posts:
-                    triggers.append({
-                        'type': 'hiring_spike',
-                        'severity': 'high',
-                        'description': f"Active hiring detected at {company['name']} - {len(hiring_posts)} open positions",
-                        'date_detected': datetime.now().isoformat(),
-                        'source': 'linkedin_api'
-                    })
-                
-                if recent_activity:
-                    triggers.append({
-                        'type': 'company_activity',
-                        'severity': 'medium',
-                        'description': f"Increased LinkedIn activity at {company['name']}",
-                        'date_detected': datetime.now().isoformat(),
-                        'source': 'linkedin_api'
-                    })
-            
-            return triggers
-        except Exception as e:
-            print(f"Error detecting hiring triggers for {company['name']}: {str(e)}")
-            return []
+            if recent_activity:
+                triggers.append({
+                    'type': 'company_activity',
+                    'severity': 'medium',
+                    'description': f"Increased LinkedIn activity at {company['name']}",
+                    'date_detected': datetime.now().isoformat(),
+                    'source': 'linkedin_api'
+                })
+        
+        return triggers
     
     
     def _detect_funding_triggers(self, company):
         """Detect funding triggers using news search."""
-        try:
-            funding_data = self.mcp.search_funding_news(company['name'])
-            
-            triggers = []
-            
-            if funding_data and not funding_data.get('error'):
-                results = funding_data.get('results', [])
-                
-                if results:
-                    triggers.append({
-                        'type': 'funding_round',
-                        'severity': 'high',
-                        'description': f"Recent funding activity detected at {company['name']}",
-                        'date_detected': datetime.now().isoformat(),
-                        'source': 'news_search'
-                    })
-            
-            return triggers
-        except Exception as e:
-            print(f"Error detecting funding triggers for {company['name']}: {str(e)}")
-            return []
+        funding_data = safe_mcp_call(self.mcp, 'search_funding_news', company['name'])
+        triggers = []
+        
+        if funding_data and funding_data.get('results'):
+            triggers.append({
+                'type': 'funding_round',
+                'severity': 'high',
+                'description': f"Recent funding activity detected at {company['name']}",
+                'date_detected': datetime.now().isoformat(),
+                'source': 'news_search'
+            })
+        
+        return triggers
     
     
     def _detect_leadership_triggers(self, company):
         """Detect leadership changes using news search."""
-        try:
-            news_data = self.mcp.search_company_news(company['name'])
-            
-            triggers = []
-            
-            if news_data and not news_data.get('error'):
-                results = news_data.get('results', [])
-                
-                if results:
-                    # Check for leadership keywords in news results
-                    leadership_keywords = ['ceo', 'cto', 'vp', 'hired', 'joins', 'appointed']
-                    for result in results:
-                        if any(keyword in str(result).lower() for keyword in leadership_keywords):
-                            triggers.append({
-                                'type': 'leadership_change',
-                                'severity': 'medium',
-                                'description': f"Leadership changes detected at {company['name']}",
-                                'date_detected': datetime.now().isoformat(),
-                                'source': 'news_search'
-                            })
-                            break
-            
-            return triggers
-        except Exception as e:
-            print(f"Error detecting leadership triggers for {company['name']}: {str(e)}")
-            return []
+        return self._detect_keyword_triggers(
+            company, 'leadership_change', 'medium',
+            ['ceo', 'cto', 'vp', 'hired', 'joins', 'appointed'],
+            f"Leadership changes detected at {company['name']}"
+        )
     
     def _detect_expansion_triggers(self, company):
         """Detect business expansion using news search."""
-        try:
-            news_data = self.mcp.search_company_news(company['name'])
-            
-            triggers = []
-            
-            if news_data and not news_data.get('error'):
-                results = news_data.get('results', [])
-                
-                if results:
-                    # Check for expansion keywords in news results
-                    expansion_keywords = ['expansion', 'new office', 'opening', 'market']
-                    for result in results:
-                        if any(keyword in str(result).lower() for keyword in expansion_keywords):
-                            triggers.append({
-                                'type': 'expansion',
-                                'severity': 'medium',
-                                'description': f"Business expansion detected at {company['name']}",
-                                'date_detected': datetime.now().isoformat(),
-                                'source': 'news_search'
-                            })
-                            break
-            
-            return triggers
-        except Exception as e:
-            print(f"Error detecting expansion triggers for {company['name']}: {str(e)}")
-            return []
+        return self._detect_keyword_triggers(
+            company, 'expansion', 'medium',
+            ['expansion', 'new office', 'opening', 'market'],
+            f"Business expansion detected at {company['name']}"
+        )
+    
+    def _detect_keyword_triggers(self, company, trigger_type, severity, keywords, description):
+        """Generic method to detect triggers based on keywords in news."""
+        news_data = safe_mcp_call(self.mcp, 'search_company_news', company['name'])
+        triggers = []
+        
+        if news_data and news_data.get('results'):
+            # Check for keywords in news results
+            for result in news_data['results']:
+                if any(keyword in str(result).lower() for keyword in keywords):
+                    triggers.append({
+                        'type': trigger_type,
+                        'severity': severity,
+                        'description': description,
+                        'date_detected': datetime.now().isoformat(),
+                        'source': 'news_search'
+                    })
+                    break
+        
+        return triggers
     
     def _calculate_trigger_score(self, triggers):
         severity_weights = {'high': 15, 'medium': 10, 'low': 5}

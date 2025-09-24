@@ -3,6 +3,7 @@ from crewai.tools import BaseTool
 from typing import Any, List
 from pydantic import BaseModel, Field
 import re
+from .utils import validate_companies_input, safe_mcp_call, validate_email, deduplicate_by_key
 
 class ContactResearchInput(BaseModel):
     companies: List[dict] = Field(description="List of companies to research contacts for")
@@ -19,13 +20,8 @@ class ContactResearchTool(BaseTool):
         self.mcp = mcp_client
     
     def _run(self, companies, target_roles) -> list:
-        # Ensure companies is a list
-        if not isinstance(companies, list):
-            print(f"Warning: Expected list of companies, got {type(companies)}")
-            return []
-        
+        companies = validate_companies_input(companies)
         if not companies:
-            print("No companies provided for contact research")
             return []
         
         # Ensure target_roles is a list
@@ -33,9 +29,6 @@ class ContactResearchTool(BaseTool):
             target_roles = [target_roles] if target_roles else []
         
         for company in companies:
-            if not isinstance(company, dict):
-                print(f"Warning: Expected company dict, got {type(company)}")
-                continue
                 
             contacts = []
             
@@ -53,27 +46,23 @@ class ContactResearchTool(BaseTool):
     
     def _search_contacts_by_role(self, company, role):
         """Search for contacts by role using MCP."""
-        try:
-            # Search for LinkedIn contacts using MCP
-            search_query = f"{company['name']} {role} LinkedIn contact"
-            search_result = self.mcp.search_company_news(search_query)
-            
-            contacts = []
-            if search_result and search_result.get('results'):
-                contacts.extend(self._extract_contacts_from_mcp_results(search_result['results'], role))
-            
-            # Also search for general contact information
-            if not contacts:
-                contact_query = f"{company['name']} {role} email contact"
-                contact_result = self.mcp.search_company_news(contact_query)
-                if contact_result and contact_result.get('results'):
-                    contacts.extend(self._extract_contacts_from_mcp_results(contact_result['results'], role))
-            
-            return contacts[:3]  # Limit to 3 contacts per role
-            
-        except Exception as e:
-            print(f"Error searching contacts for {company['name']} {role}: {str(e)}")
-            return []
+        contacts = []
+        
+        # Search for LinkedIn contacts using MCP
+        search_query = f"{company['name']} {role} LinkedIn contact"
+        search_result = safe_mcp_call(self.mcp, 'search_company_news', search_query)
+        
+        if search_result and search_result.get('results'):
+            contacts.extend(self._extract_contacts_from_mcp_results(search_result['results'], role))
+        
+        # Also search for general contact information if needed
+        if not contacts:
+            contact_query = f"{company['name']} {role} email contact"
+            contact_result = safe_mcp_call(self.mcp, 'search_company_news', contact_query)
+            if contact_result and contact_result.get('results'):
+                contacts.extend(self._extract_contacts_from_mcp_results(contact_result['results'], role))
+        
+        return contacts[:3]  # Limit to 3 contacts per role
     
     def _extract_contacts_from_mcp_results(self, results, role):
         """Extract contact information from MCP search results."""
@@ -140,7 +129,7 @@ class ContactResearchTool(BaseTool):
             )
         
         # Validate email format
-        contact['email_valid'] = self._validate_email(contact.get('email', ''))
+        contact['email_valid'] = validate_email(contact.get('email', ''))
         
         # Calculate confidence score
         contact['confidence_score'] = self._calculate_confidence(contact)
@@ -152,9 +141,6 @@ class ContactResearchTool(BaseTool):
             return ""
         return f"{first.lower()}.{last.lower()}@{domain}"
     
-    def _validate_email(self, email):
-        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-        return bool(re.match(pattern, email))
     
     def _calculate_confidence(self, contact):
         score = 0
@@ -170,13 +156,10 @@ class ContactResearchTool(BaseTool):
                 contact.get('confidence_score', 0) >= 50)
     
     def _deduplicate_contacts(self, contacts):
-        seen = set()
-        unique = []
-        for contact in contacts:
-            key = contact.get('email', '') or f"{contact.get('first_name', '')}_{contact.get('last_name', '')}"
-            if key and key not in seen:
-                seen.add(key)
-                unique.append(contact)
+        unique = deduplicate_by_key(
+            contacts, 
+            lambda c: c.get('email', '') or f"{c.get('first_name', '')}_{c.get('last_name', '')}"
+        )
         return sorted(unique, key=lambda x: x.get('confidence_score', 0), reverse=True)
     
     def _calculate_contact_quality(self, contacts):
