@@ -26,7 +26,6 @@ class BrightDataMCP:
     def scrape_company_linkedin(self, company_name):
         """Scrape LinkedIn for hiring activity and posts using Bright Data MCP."""
         try:
-            # Search for LinkedIn company data
             query = f"{company_name} LinkedIn hiring jobs careers"
             search_result = self._mcp_search(query)
             
@@ -111,7 +110,6 @@ class BrightDataMCP:
                         tool_name = getattr(tool, 'name', str(tool))
                         print(f"🔍 Trying MCP tool: {tool_name}")
                         
-                        # Look for search engine tool (like in your example)
                         if 'search_engine' in tool_name and 'batch' not in tool_name:
                             try:
                                 if hasattr(tool, '_run'):
@@ -129,7 +127,6 @@ class BrightDataMCP:
                                 print(f"⚠️ Method failed for {tool_name}: {str(method_error)}")
                                 continue
                         
-                        # Also look for other relevant tools
                         elif any(keyword in tool_name.lower() for keyword in ['scrape', 'web', 'browser']):
                             try:
                                 if hasattr(tool, '_run'):
@@ -167,7 +164,6 @@ class BrightDataMCP:
                 if mcp_result.strip().startswith('<') or 'html' in mcp_result.lower():
                     return self._parse_html_search_results(mcp_result)
                 else:
-                    # Try to parse as JSON
                     try:
                         parsed = json.loads(mcp_result)
                         return parsed if isinstance(parsed, dict) else {'results': [parsed]}
@@ -195,14 +191,12 @@ class BrightDataMCP:
         try:
             soup = BeautifulSoup(html_content, 'html.parser')
             
-            # Find all links that look like search results
             all_links = soup.find_all('a', href=True)
             
             for link in all_links:
                 try:
                     url = link.get('href', '')
                     
-                    # Skip non-HTTP links and Google internal stuff
                     if not url.startswith('http'):
                         continue
                         
@@ -213,29 +207,24 @@ class BrightDataMCP:
                     ]):
                         continue
                     
-                    # Get title - look for h3 tags first (common for search results)
                     title_elem = link.find(['h3', 'h2', 'h1', 'span'])
                     if title_elem:
                         title = title_elem.get_text().strip()
                     else:
                         title = link.get_text().strip()
                     
-                    # Must have a reasonable title
                     if not title or len(title) < 5 or len(title) > 200:
                         continue
                     
-                    # Look for snippet in nearby elements
                     snippet = ""
                     parent = link.parent
                     if parent:
-                        # Look for description text in parent or siblings
                         for elem in parent.find_all(['div', 'span', 'p']):
                             text = elem.get_text().strip()
                             if len(text) > 30 and text != title and 'javascript' not in text.lower():
                                 snippet = text[:200]
                                 break
                     
-                    # Add all reasonable looking results
                     results.append({
                         'url': url,
                         'title': title,
@@ -247,10 +236,9 @@ class BrightDataMCP:
                         break
                             
                 except Exception as e:
-                    continue  # Skip problematic results
+                    continue
             
             if not results:
-                # Fallback: try regex parsing
                 return self._parse_html_with_regex(html_content)
             
             print(f"🔍 Extracted {len(results)} search results from HTML")
@@ -266,27 +254,22 @@ class BrightDataMCP:
         
         results = []
         
-        # Extract URLs that look like real websites - simplified pattern
         url_pattern = r'https?://[^\s<>"]+\.(?:com|org|net|edu|gov|io|co|ai|tech|biz|info)[^\s<>"]*'
         urls = re.findall(url_pattern, html_content, re.IGNORECASE)
         
-        # Find corresponding titles for these URLs
         for full_match in re.finditer(url_pattern, html_content, re.IGNORECASE):
             url = full_match.group(0)
             
-            # Skip Google stuff
             if any(skip in url for skip in [
                 'google.com', 'youtube.com', 'accounts.google',
                 'support.google', 'translate.google'
             ]):
                 continue
             
-            # Look for title near this URL
             start_pos = max(0, full_match.start() - 500)
             end_pos = min(len(html_content), full_match.end() + 500)
             surrounding_text = html_content[start_pos:end_pos]
             
-            # Try to find title text
             title_patterns = [
                 r'<h[1-6][^>]*>([^<]+)</h[1-6]>',
                 r'<title[^>]*>([^<]+)</title>',
@@ -302,7 +285,6 @@ class BrightDataMCP:
                     break
             
             if not title:
-                # Use domain name as title
                 domain = url.split('://')[1].split('/')[0]
                 title = domain.replace('www.', '').title()
             
@@ -330,14 +312,12 @@ class BrightDataMCP:
             title = result.get('title', '').lower()
             snippet = result.get('snippet', '').lower()
             
-            # Look for hiring indicators
             if any(keyword in title or keyword in snippet for keyword in ['hiring', 'jobs', 'careers', 'join']):
                 hiring_posts.append({
                     "title": result.get('title', '')[:100],
                     "source": "linkedin_mcp"
                 })
             
-            # Look for company activity
             if any(keyword in title or keyword in snippet for keyword in ['announces', 'launches', 'proud', 'excited']):
                 recent_activity.append({
                     "type": "company_update",
@@ -364,7 +344,6 @@ class BrightDataMCP:
             if not description:
                 description = result.get('snippet', '')[:500]
             
-            # Look for technology indicators
             content = (result.get('title', '') + ' ' + result.get('snippet', '')).lower()
             tech_keywords = {
                 'react': 'React',

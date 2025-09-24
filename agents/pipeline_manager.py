@@ -108,13 +108,11 @@ class CRMIntegrationTool(BaseTool):
             "Content-Type": "application/json"
         }
         
-        # Format trigger events for HubSpot
         trigger_summary = "; ".join([
             f"{t.get('type', '')}: {t.get('description', '')}" 
             for t in company.get('trigger_events', [])
         ])
         
-        # Clean and validate required fields
         email = contact.get('email', '').strip()
         if not email:
             return {"success": False, "error": "Contact email is required", "contact": contact.get('first_name', 'Unknown')}
@@ -130,13 +128,12 @@ class CRMIntegrationTool(BaseTool):
             "lifecyclestage": "lead"
         }
         
-        # Add custom properties if they exist
         if company.get('lead_score'):
             properties["lead_score"] = str(company.get('lead_score', 0))
         if company.get('lead_grade'):
             properties["lead_grade"] = company.get('lead_grade', 'D')
         if trigger_summary:
-            properties["trigger_events"] = trigger_summary[:1000]  # Limit field length
+            properties["trigger_events"] = trigger_summary[:1000]
         if contact.get('confidence_score'):
             properties["contact_confidence"] = str(contact.get('confidence_score', 0))
         
@@ -153,7 +150,6 @@ class CRMIntegrationTool(BaseTool):
                     "hubspot_id": response.json().get('id')
                 }
             elif response.status_code == 409:
-                # Contact already exists - try to update instead
                 existing_contact = response.json()
                 return {
                     "success": True,

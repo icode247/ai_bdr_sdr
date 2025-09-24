@@ -5,7 +5,6 @@ from crewai import Crew, Process, Task
 import pandas as pd
 from datetime import datetime
 import json
-#bright-data-logo
 from mcp_client import BrightDataMCP
 from agents.company_discovery import create_company_discovery_agent
 from agents.trigger_detection import create_trigger_detection_agent
@@ -15,7 +14,6 @@ from agents.pipeline_manager import create_pipeline_manager_agent
 
 load_dotenv()
 
-# Page configuration
 st.set_page_config(
     page_title="AI BDR/SDR System",
     page_icon="🤖",
@@ -25,13 +23,10 @@ st.set_page_config(
 st.title("🤖 AI BDR/SDR Agent System")
 st.markdown("**Real-time prospecting with multi-agent intelligence and trigger-based personalization**")
 
-# Initialize session state
 if 'workflow_results' not in st.session_state:
     st.session_state.workflow_results = None
 
-# Sidebar Configuration
 with st.sidebar:
-    # Add Bright Data logo at the top
     try:
         st.image("bright-data-logo.png", width=200)
         st.markdown("---")
@@ -41,19 +36,16 @@ with st.sidebar:
     
     st.header("⚙️ Configuration")
     
-    # ICP Criteria
     st.subheader("Ideal Customer Profile")
     industry = st.selectbox("Industry", ["SaaS", "FinTech", "E-commerce", "Healthcare", "AI/ML"])
     size_range = st.selectbox("Company Size", ["startup", "small", "medium", "enterprise"])
     location = st.text_input("Location (optional)", placeholder="San Francisco, NY, etc.")
     max_companies = st.slider("Max Companies", 5, 50, 20)
     
-    # Target Roles
     st.subheader("Target Decision Makers")
     all_roles = ["CEO", "CTO", "VP Engineering", "Head of Product", "VP Sales", "CMO", "CFO"]
     target_roles = st.multiselect("Roles", all_roles, default=["CEO", "CTO", "VP Engineering"])
     
-    # Message Types
     st.subheader("Outreach Configuration")
     message_types = st.multiselect(
         "Message Types",
@@ -61,7 +53,6 @@ with st.sidebar:
         default=["cold_email"]
     )
     
-    # Advanced Settings
     with st.expander("Advanced Intelligence"):
         enable_competitive = st.checkbox("Competitive Intelligence", value=True)
         enable_validation = st.checkbox("Multi-source Validation", value=True)
@@ -69,7 +60,6 @@ with st.sidebar:
     
     st.divider()
     
-    # API Status
     st.subheader("🔗 API Status")
     
     apis = [
@@ -103,14 +93,12 @@ with st.sidebar:
             else:
                 st.error(f"❌ {name} Missing")
 
-# Main Workflow Interface
 col1, col2 = st.columns([3, 1])
 
 with col1:
     st.subheader("🚀 AI Prospecting Workflow")
     
     if st.button("Start Multi-Agent Prospecting", type="primary", use_container_width=True):
-        # Validate API keys
         required_keys = ["BRIGHT_DATA_API_TOKEN", "OPENAI_API_KEY"]
         missing_keys = [key for key in required_keys if not os.getenv(key)]
         
@@ -118,12 +106,10 @@ with col1:
             st.error(f"Missing required API keys: {', '.join(missing_keys)}")
             st.stop()
         
-        # Initialize workflow
         progress_bar = st.progress(0)
         status_text = st.empty()
         
         try:
-            # Initialize MCP client and agents
             mcp_client = BrightDataMCP()
             
             discovery_agent = create_company_discovery_agent(mcp_client)
@@ -132,7 +118,6 @@ with col1:
             message_agent = create_message_generation_agent()
             pipeline_agent = create_pipeline_manager_agent()
             
-            # Step 1: Company Discovery
             status_text.text("🔍 Discovering companies matching ICP...")
             progress_bar.progress(15)
             
@@ -148,12 +133,10 @@ with col1:
                 process=Process.sequential
             )
             
-            # Use tool directly instead of crew for reliable data structure
             companies = discovery_agent.tools[0]._run(industry, size_range, location)
             
             st.success(f"✅ Discovered {len(companies)} companies")
             
-            # Step 2: Trigger Detection
             status_text.text("🎯 Analyzing trigger events and buying signals...")
             progress_bar.progress(30)
             
@@ -169,7 +152,6 @@ with col1:
                 process=Process.sequential
             )
             
-            # Use tool directly instead of crew for reliable data structure
             companies_with_triggers = trigger_agent.tools[0]._run(companies)
             
             total_triggers = sum(len(c.get('trigger_events', [])) for c in companies_with_triggers)
@@ -177,7 +159,6 @@ with col1:
             st.success(f"✅ Detected {total_triggers} trigger events")
             progress_bar.progress(45)
             
-            # Step 3: Contact Research
             status_text.text("👥 Finding decision-maker contacts...")
             
             contact_task = Task(
@@ -192,7 +173,6 @@ with col1:
                 process=Process.sequential
             )
             
-            # Use tool directly instead of crew for reliable data structure
             companies_with_contacts = contact_agent.tools[0]._run(companies_with_triggers, target_roles)
             
             total_contacts = sum(len(c.get('contacts', [])) for c in companies_with_contacts)
@@ -200,7 +180,6 @@ with col1:
             st.success(f"✅ Found {total_contacts} verified contacts")
             progress_bar.progress(60)
             
-            # Step 4: Message Generation
             status_text.text("✍️ Generating personalized outreach messages...")
             
             message_task = Task(
@@ -215,7 +194,6 @@ with col1:
                 process=Process.sequential
             )
             
-            # Use tool directly instead of crew for reliable data structure
             companies_with_messages = message_agent.tools[0]._run(companies_with_contacts, message_types[0])
             
             total_messages = sum(len(c.get('contacts', [])) for c in companies_with_messages)
@@ -223,7 +201,6 @@ with col1:
             st.success(f"✅ Generated {total_messages} personalized messages")
             progress_bar.progress(75)
             
-            # Step 5: Lead Scoring and Pipeline Management
             status_text.text("📊 Scoring leads and updating CRM...")
             
             pipeline_task = Task(
@@ -238,11 +215,9 @@ with col1:
                 process=Process.sequential
             )
             
-            # Lead scoring
             final_companies = pipeline_agent.tools[0]._run(companies_with_messages)
             qualified_leads = [c for c in final_companies if c.get('lead_grade', 'D') in ['A', 'B']]
             
-            # CRM Integration
             crm_results = {"success": 0, "errors": 0}
             if os.getenv("HUBSPOT_API_KEY"):
                 crm_results = pipeline_agent.tools[1]._run(final_companies, min_lead_grade)
@@ -250,7 +225,6 @@ with col1:
             progress_bar.progress(100)
             status_text.text("✅ Workflow completed successfully!")
             
-            # Store results in session state
             st.session_state.workflow_results = {
                 'companies': final_companies,
                 'total_companies': len(final_companies),
@@ -265,14 +239,12 @@ with col1:
             st.error(f"❌ Workflow failed: {str(e)}")
             st.write("Please check your API configurations and try again.")
 
-# Display Results
 if st.session_state.workflow_results:
     results = st.session_state.workflow_results
     
     st.markdown("---")
     st.subheader("📊 Workflow Results")
     
-    # Key Metrics
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Companies Analyzed", results['total_companies'])
@@ -283,7 +255,6 @@ if st.session_state.workflow_results:
     with col4:
         st.metric("Qualified Leads", results['qualified_leads'])
     
-    # CRM Integration Results
     if results['crm_results']['success'] > 0 or results['crm_results']['errors'] > 0:
         st.subheader("🔄 HubSpot CRM Integration")
         col1, col2 = st.columns(2)
@@ -293,10 +264,9 @@ if st.session_state.workflow_results:
             if results['crm_results']['errors'] > 0:
                 st.metric("Export Errors", results['crm_results']['errors'], delta_color="inverse")
     
-    # Detailed Company Results
     st.subheader("🏢 Company Intelligence")
     
-    for company in results['companies'][:10]:  # Show top 10
+    for company in results['companies'][:10]:
         with st.expander(f"📋 {company.get('name', 'Unknown')} - Grade {company.get('lead_grade', 'D')} (Score: {company.get('lead_score', 0):.0f})"):
             
             col1, col2 = st.columns(2)
@@ -306,7 +276,6 @@ if st.session_state.workflow_results:
                 st.write(f"**Domain:** {company.get('domain', 'Unknown')}")
                 st.write(f"**ICP Score:** {company.get('icp_score', 0)}")
                 
-                # Trigger Events
                 triggers = company.get('trigger_events', [])
                 if triggers:
                     st.write("**🎯 Trigger Events:**")
@@ -315,7 +284,6 @@ if st.session_state.workflow_results:
                         st.write(f"{severity_emoji} {trigger.get('description', 'Unknown trigger')}")
             
             with col2:
-                # Contacts
                 contacts = company.get('contacts', [])
                 if contacts:
                     st.write("**👥 Decision Makers:**")
@@ -328,7 +296,6 @@ if st.session_state.workflow_results:
                         st.write(f"   📧 {contact.get('email', 'No email')}")
                         st.write(f"   Confidence: {confidence}%")
                         
-                        # Generated Message Preview
                         message = contact.get('generated_message', {})
                         if message.get('subject'):
                             st.write(f"   **Subject:** {message['subject']}")
@@ -337,13 +304,11 @@ if st.session_state.workflow_results:
                             st.write(f"   **Preview:** {preview}")
                         st.write("---")
     
-    # Export Options
     st.subheader("📥 Export & Actions")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        # CSV Export
         export_data = []
         for company in results['companies']:
             for contact in company.get('contacts', []):
@@ -374,7 +339,6 @@ if st.session_state.workflow_results:
             )
     
     with col2:
-        # Re-run CRM Export
         if st.button("🔄 Sync to HubSpot CRM", use_container_width=True):
             if not os.getenv("HUBSPOT_API_KEY"):
                 st.warning("HubSpot API key required for CRM export")
@@ -386,7 +350,6 @@ if st.session_state.workflow_results:
                 st.rerun()
     
     with col3:
-        # Clear Results
         if st.button("🗑️ Clear Results", use_container_width=True):
             st.session_state.workflow_results = None
             st.rerun()

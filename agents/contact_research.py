@@ -24,7 +24,6 @@ class ContactResearchTool(BaseTool):
         if not companies:
             return []
         
-        # Ensure target_roles is a list
         if not isinstance(target_roles, list):
             target_roles = [target_roles] if target_roles else []
         
@@ -48,21 +47,19 @@ class ContactResearchTool(BaseTool):
         """Search for contacts by role using MCP."""
         contacts = []
         
-        # Search for LinkedIn contacts using MCP
         search_query = f"{company['name']} {role} LinkedIn contact"
         search_result = safe_mcp_call(self.mcp, 'search_company_news', search_query)
         
         if search_result and search_result.get('results'):
             contacts.extend(self._extract_contacts_from_mcp_results(search_result['results'], role))
         
-        # Also search for general contact information if needed
         if not contacts:
             contact_query = f"{company['name']} {role} email contact"
             contact_result = safe_mcp_call(self.mcp, 'search_company_news', contact_query)
             if contact_result and contact_result.get('results'):
                 contacts.extend(self._extract_contacts_from_mcp_results(contact_result['results'], role))
         
-        return contacts[:3]  # Limit to 3 contacts per role
+        return contacts[:3]
     
     def _extract_contacts_from_mcp_results(self, results, role):
         """Extract contact information from MCP search results."""
@@ -74,7 +71,6 @@ class ContactResearchTool(BaseTool):
                 snippet = result.get('snippet', '')
                 url = result.get('url', '')
                 
-                # Try to extract names from title or snippet
                 names = self._extract_names_from_text(title + ' ' + snippet)
                 
                 for name_parts in names:
@@ -90,7 +86,7 @@ class ContactResearchTool(BaseTool):
                             'source': 'mcp_search'
                         })
                         
-                        if len(contacts) >= 2:  # Limit contacts per result
+                        if len(contacts) >= 2:
                             break
                             
             except Exception as e:
@@ -103,11 +99,10 @@ class ContactResearchTool(BaseTool):
         """Extract likely names from text."""
         import re
         
-        # Pattern for names (First Last, First M Last, etc.)
         name_patterns = [
-            r'\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b',  # First Last
-            r'\b([A-Z][a-z]+)\s+([A-Z]\.?\s*[A-Z][a-z]+)\b',  # First M Last
-            r'\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)\b'  # First Middle Last
+            r'\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b',
+            r'\b([A-Z][a-z]+)\s+([A-Z]\.?\s*[A-Z][a-z]+)\b',
+            r'\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)\b'
         ]
         
         names = []
@@ -117,10 +112,9 @@ class ContactResearchTool(BaseTool):
                 if isinstance(match, tuple):
                     names.append(list(match))
                 
-        return names[:3]  # Limit to 3 names
+        return names[:3]
     
     def _enrich_contact_data(self, contact, company):
-        # Generate email using common patterns
         if not contact.get('email'):
             contact['email'] = self._generate_email(
                 contact['first_name'], 
@@ -128,10 +122,8 @@ class ContactResearchTool(BaseTool):
                 company.get('domain', '')
             )
         
-        # Validate email format
         contact['email_valid'] = validate_email(contact.get('email', ''))
         
-        # Calculate confidence score
         contact['confidence_score'] = self._calculate_confidence(contact)
         
         return contact

@@ -22,7 +22,6 @@ class CompanyDiscoveryTool(BaseTool):
     def _run(self, industry: str, size_range: str, location: str = "") -> list:
         companies = []
         
-        # Search multiple sources for companies with broader terms
         search_terms = [
             f"{industry} companies {size_range}",
             f"{industry} startups {location}",
@@ -41,10 +40,8 @@ class CompanyDiscoveryTool(BaseTool):
     def _search_companies(self, term):
         """Search for companies using real web search through Bright Data."""
         try:
-            # Use real company search through Google
             companies = []
             
-            # Search for company listings and directories with simpler queries
             search_queries = [
                 f"{term} directory",
                 f"{term} list",
@@ -53,11 +50,9 @@ class CompanyDiscoveryTool(BaseTool):
             
             for query in search_queries:
                 try:
-                    # Perform actual web search using Bright Data
                     results = self._perform_company_search(query)
                     companies.extend(results)
                     
-                    # Limit to avoid too many results
                     if len(companies) >= 10:
                         break
                         
@@ -65,7 +60,6 @@ class CompanyDiscoveryTool(BaseTool):
                     print(f"Error in search query '{query}': {str(e)}")
                     continue
             
-            # Remove duplicates and return
             return self._filter_unique_companies(companies)
             
         except Exception as e:
@@ -76,7 +70,6 @@ class CompanyDiscoveryTool(BaseTool):
         linkedin_data = safe_mcp_call(self.mcp, 'scrape_company_linkedin', company['name'])
         website_data = safe_mcp_call(self.mcp, 'scrape_company_website', company.get('domain', ''))
         
-        # Extract employee count from LinkedIn data if available
         employee_count = linkedin_data.get('employee_count') or 150
         
         return {
@@ -94,13 +87,11 @@ class CompanyDiscoveryTool(BaseTool):
         if self._check_size_range(company.get('employee_count', 0), size_range):
             score += 25
         
-        # Add base score for having basic company information
         if company.get('name') and company.get('domain'):
             score += 20
         
         company['icp_score'] = score
         
-        # Lower threshold to allow more companies through for demonstration
         return score >= 20
     
     def _check_size_range(self, count, size_range):
@@ -137,20 +128,17 @@ class CompanyDiscoveryTool(BaseTool):
         """Extract company information from MCP search results."""
         companies = []
         
-        for result in mcp_results[:10]:  # Limit to first 10 results
+        for result in mcp_results[:10]:
             try:
                 title = result.get('title', '')
                 url = result.get('url', '')
                 snippet = result.get('snippet', '')
                 
-                # Extract company name from title or URL
                 company_name = self._extract_company_name_from_result(title, url)
                 
                 if company_name and len(company_name) > 2:
-                    # Try to extract domain
                     domain = self._extract_domain_from_url(url)
                     
-                    # Determine industry from query
                     industry = self._extract_industry_from_query(original_query)
                     
                     companies.append({
@@ -169,18 +157,14 @@ class CompanyDiscoveryTool(BaseTool):
         """Extract company name from search result title or URL."""
         import re
         
-        # Try to get company name from title
         if title:
-            # Look for patterns like "Company Name - About" or "About Company Name"
             title_clean = re.sub(r'[\|\-\—\–].*$', '', title).strip()
             
-            # Remove common suffixes
             title_clean = re.sub(r'\s+(Inc|Corp|LLC|Ltd|Solutions|Systems|Technologies|Software|Platform|Company)$', '', title_clean, flags=re.IGNORECASE)
             
             if len(title_clean) > 2 and len(title_clean) < 50:
                 return title_clean
         
-        # Fallback: try to extract from URL
         if url:
             domain_parts = url.split('/')[2].split('.')
             if len(domain_parts) > 1:
@@ -210,7 +194,7 @@ class CompanyDiscoveryTool(BaseTool):
             if keyword in query_lower:
                 return industry
         
-        return 'Technology'  # Default industry
+        return 'Technology'
 
 def create_company_discovery_agent(mcp_client):
     return Agent(

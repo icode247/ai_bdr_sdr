@@ -7,11 +7,9 @@ import re
 
 def validate_companies_input(companies: Any) -> List[Dict]:
     """Validate and normalize companies input across all agents."""
-    # Handle case where companies might be wrapped in a dict
     if isinstance(companies, dict) and 'companies' in companies:
         companies = companies['companies']
     
-    # Ensure companies is a list
     if not isinstance(companies, list):
         print(f"Warning: Expected list of companies, got {type(companies)}")
         return []
@@ -20,7 +18,6 @@ def validate_companies_input(companies: Any) -> List[Dict]:
         print("No companies provided")
         return []
     
-    # Filter out invalid company entries
     valid_companies = []
     for company in companies:
         if isinstance(company, dict):
@@ -72,7 +69,6 @@ def extract_domain_from_url(url: str) -> str:
         parsed = urlparse(url)
         return parsed.netloc
     except:
-        # Fallback parsing
         if '//' in url:
             return url.split('//')[1].split('/')[0]
         return ""

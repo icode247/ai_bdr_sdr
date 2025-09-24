@@ -54,7 +54,6 @@ class MessageGenerationTool(BaseTool):
             return self._generate_cold_email(context)
     
     def _build_message_context(self, contact, company):
-        # Get primary trigger for personalization
         triggers = company.get('trigger_events', [])
         primary_trigger = triggers[0] if triggers else None
         
@@ -141,7 +140,6 @@ Be professional, reference their company activity, no direct sales pitch."""
         score = 0
         body = message.get('body', '').lower()
         
-        # Personalization checks
         if company.get('name', '').lower() in message.get('subject', '').lower():
             score += 25
         if company.get('trigger_events') and any(t.get('type', '') in body for t in company['trigger_events']):

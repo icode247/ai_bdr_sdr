@@ -27,19 +27,15 @@ class TriggerDetectionTool(BaseTool):
                 
             triggers = []
             
-            # Detect hiring triggers
             hiring_signals = self._detect_hiring_triggers(company)
             triggers.extend(hiring_signals)
             
-            # Detect funding triggers
             funding_signals = self._detect_funding_triggers(company)
             triggers.extend(funding_signals)
             
-            # Detect leadership changes
             leadership_signals = self._detect_leadership_triggers(company)
             triggers.extend(leadership_signals)
             
-            # Detect expansion signals
             expansion_signals = self._detect_expansion_triggers(company)
             triggers.extend(expansion_signals)
             
@@ -117,7 +113,6 @@ class TriggerDetectionTool(BaseTool):
         triggers = []
         
         if news_data and news_data.get('results'):
-            # Check for keywords in news results
             for result in news_data['results']:
                 if any(keyword in str(result).lower() for keyword in keywords):
                     triggers.append({
